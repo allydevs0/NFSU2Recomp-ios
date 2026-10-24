@@ -23,6 +23,68 @@ jobs:
         with:
           submodules: true
 
+      # ---------------------------------------------------------------
+      # 1️⃣ Decrypt the protected game executable (SPEED2.EXE)
+      # ---------------------------------------------------------------
+      - name: Decrypt SPEED2.EXE (private asset)
+        env:
+          EXE_PWD: ${{ secrets.EXE_PWD }}
+        run: |
+          mkdir -p private
+          if [ -f "SPEED2.EXE.enc" ]; then
+            openssl aes-256-cbc -d -in SPEED2.EXE.enc -out private/SPEED2.EXE -k "$EXE_PWD"
+            chmod +x private/SPEED2.EXE
+            echo "SPEED2_EXE=$(pwd)/private/SPEED2.EXE" >> $GITHUB_ENV
+          else
+            echo "⚠️ Encrypted executable not found. Ensure SPEED2.EXE.enc is in the repository root."
+            exit 1
+          fi
+
+      - name: Set up Xcode
+        run: xcode-select -p
+
+      - name: Ensure script is executable
+        run: chmod +x ios_build.sh
+
+      - name: Build iOS IPA
+        env:
+          SPEED2_EXE: ${{ env.SPEED2_EXE }}
+        run: |
+          ./ios_build.sh
+
+      - name: Determine version
+        id: version
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "VERSION=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
+          else
+            echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create GitHub Release
+        id: create_release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.VERSION }}
+          name: "Release ${{ steps.version.outputs.VERSION }}"
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload IPA to release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.VERSION }}
+          files: out/NFSU2Recomp.ipa
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+
       - name: Set up Xcode
         run: xcode-select -p
 
